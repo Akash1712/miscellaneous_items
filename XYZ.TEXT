@@ -1,0 +1,38 @@
+Dependency for Log4j2 :
+
+<dependencies>
+    <!-- SLF4J API -->
+    <dependency>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-api</artifactId>
+        <version>2.0.9</version>
+    </dependency>
+    
+    <!-- Log4j2 Core -->
+    <dependency>
+        <groupId>org.apache.logging.log4j</groupId>
+        <artifactId>log4j-core</artifactId>
+        <version>2.21.1</version>
+    </dependency>
+    
+    <!-- Log4j2 SLF4J Binding -->
+    <dependency>
+        <groupId>org.apache.logging.log4j</groupId>
+        <artifactId>log4j-slf4j2-impl</artifactId>
+        <version>2.21.1</version>
+    </dependency>
+    
+    <!-- JSON Template Layout -->
+    <dependency>
+        <groupId>org.apache.logging.log4j</groupId>
+        <artifactId>log4j-layout-template-json</artifactId>
+        <version>2.21.1</version>
+    </dependency>
+    
+    <!-- Disruptor for Async (best performance) -->
+    <dependency>
+        <groupId>com.lmax</groupId>
+        <artifactId>disruptor</artifactId>
+        <version>3.4.4</version>
+    </dependency>
+</dependencies>
