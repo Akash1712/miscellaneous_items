@@ -1,1 +1,109 @@
-
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN" monitorInterval="30">
+    
+    <Properties>
+        <!-- Log file location -->
+        <Property name="LOG_DIR">logs</Property>
+        <Property name="APP_NAME">pipeline-processor</Property>
+    </Properties>
+    
+    <Appenders>
+        
+        <!-- JSON Format for OpenSearch/ELK -->
+        <RollingFile name="JsonFile" 
+                     fileName="${LOG_DIR}/${APP_NAME}.json" 
+                     filePattern="${LOG_DIR}/${APP_NAME}-%d{yyyy-MM-dd}-%i.json.gz">
+            
+            <!-- JSON Layout for structured logging -->
+            <JsonTemplateLayout eventTemplateUri="classpath:EcsLayout.json">
+                <!-- Add custom fields -->
+                <EventTemplateAdditionalField key="service.name" value="${APP_NAME}"/>
+                <EventTemplateAdditionalField key="environment" value="${env:ENV:-production}"/>
+            </JsonTemplateLayout>
+            
+            <!-- Rollover policy: daily + size-based -->
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
+                <SizeBasedTriggeringPolicy size="500MB"/>
+            </Policies>
+            
+            <!-- Keep last 7 days -->
+            <DefaultRolloverStrategy max="7">
+                <Delete basePath="${LOG_DIR}" maxDepth="1">
+                    <IfFileName glob="${APP_NAME}-*.json.gz"/>
+                    <IfLastModified age="7d"/>
+                </Delete>
+            </DefaultRolloverStrategy>
+        </RollingFile>
+        
+        <!-- Separate file for errors only -->
+        <RollingFile name="ErrorFile" 
+                     fileName="${LOG_DIR}/${APP_NAME}-error.json" 
+                     filePattern="${LOG_DIR}/${APP_NAME}-error-%d{yyyy-MM-dd}-%i.json.gz">
+            
+            <JsonTemplateLayout eventTemplateUri="classpath:EcsLayout.json"/>
+            
+            <!-- Only ERROR and above -->
+            <ThresholdFilter level="ERROR" onMatch="ACCEPT" onMismatch="DENY"/>
+            
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
+                <SizeBasedTriggeringPolicy size="100MB"/>
+            </Policies>
+            
+            <DefaultRolloverStrategy max="30"/>
+        </RollingFile>
+        
+        <!-- Console appender for local development -->
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout pattern="%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n"/>
+            <!-- Only show WARN and above in console -->
+            <ThresholdFilter level="WARN" onMatch="ACCEPT" onMismatch="DENY"/>
+        </Console>
+        
+        <!-- ASYNC Wrapper for JsonFile (HIGH PERFORMANCE) -->
+        <Async name="AsyncJsonFile" includeLocation="false">
+            <AppenderRef ref="JsonFile"/>
+            <!-- Buffer size for queue -->
+            <BlockingQueueFactory>
+                <DisruptorBlockingQueueFactory spinPolicy="YIELDING"/>
+            </BlockingQueueFactory>
+        </Async>
+        
+        <!-- ASYNC Wrapper for ErrorFile -->
+        <Async name="AsyncErrorFile" includeLocation="true">
+            <AppenderRef ref="ErrorFile"/>
+        </Async>
+        
+    </Appenders>
+    
+    <Loggers>
+        
+        <!-- Pipeline Metrics Logger (your main logger) -->
+        <Logger name="PIPELINE_METRICS" level="info" additivity="false">
+            <AppenderRef ref="AsyncJsonFile"/>
+            <AppenderRef ref="AsyncErrorFile"/>
+            <AppenderRef ref="Console"/>
+        </Logger>
+        
+        <!-- Application loggers -->
+        <Logger name="com.yourcompany" level="info" additivity="false">
+            <AppenderRef ref="AsyncJsonFile"/>
+            <AppenderRef ref="AsyncErrorFile"/>
+        </Logger>
+        
+        <!-- Third-party libraries - reduce noise -->
+        <Logger name="io.vertx" level="warn"/>
+        <Logger name="org.apache.kafka" level="warn"/>
+        <Logger name="org.postgresql" level="warn"/>
+        <Logger name="org.elasticsearch" level="warn"/>
+        
+        <!-- Root logger -->
+        <Root level="info">
+            <AppenderRef ref="AsyncJsonFile"/>
+            <AppenderRef ref="Console"/>
+        </Root>
+        
+    </Loggers>
+    
+</Configuration>
