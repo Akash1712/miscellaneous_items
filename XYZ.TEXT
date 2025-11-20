@@ -1,5 +1,25 @@
 Dependency for Log4j2 :
 
+
+📊 Dashboard Design - Quick Overview
+I'm proposing 2 dashboards for OpenSearch/Kibana:
+Dashboard 1: Real-Time Operations Dashboard
+
+Top: System health (throughput, error rates, availability)
+Middle: Per-topic metrics with topic filter
+Bottom: Recent errors and slow operations
+
+Dashboard 2: Deep Dive & Troubleshooting Dashboard
+
+Correlation ID search
+Message journey timeline
+Historical trends
+Performance analysis
+
+
+
+
+
 <dependencies>
     <!-- SLF4J API -->
     <dependency>
