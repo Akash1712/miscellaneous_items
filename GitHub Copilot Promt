@@ -1,0 +1,68 @@
+Optimize the following Java Vert.x code while maintaining ALL existing business logic:
+
+TECH STACK:
+- Java with Vert.x (reactive/async)
+- Kafka for messaging
+- PostgreSQL and DB2 databases
+- Log4j2 for logging
+- OpenTelemetry for observability
+- ELK stack for log aggregation
+
+OPTIMIZATION REQUIREMENTS:
+
+1. ERROR HANDLING:
+   - Add/fix try-catch-finally blocks with proper resource cleanup
+   - Add null pointer checks (use Optional where needed)
+   - Ensure all exceptions are caught and logged appropriately
+   - Verify all resources (DB connections, Kafka clients, HTTP clients) are properly closed
+
+2. LOGGING (Log4j2):
+   - Use appropriate log levels (DEBUG/INFO/WARN/ERROR)
+   - Add structured logging with key-value pairs for ELK parsing
+   - Include correlation IDs for request tracing
+   - Log entry/exit of critical methods with context
+   - Remove any PII or sensitive data from logs
+   - Add error stack traces where needed
+
+3. VERT.X PATTERNS:
+   - Ensure no blocking calls on event loop
+   - Proper Future/Promise chaining and error handling
+   - Add timeouts for async operations
+   - Implement circuit breaker patterns for external calls
+
+4. DATABASE:
+   - Verify connection pool management
+   - Ensure proper transaction handling and rollback
+   - Use parameterized queries (prevent SQL injection)
+   - Close all connections, statements, and result sets
+
+5. KAFKA:
+   - Handle producer acknowledgments
+   - Manage consumer offsets properly
+   - Add error handling for serialization/deserialization
+   - Implement idempotency where needed
+
+6. OPENTELEMETRY:
+   - Add spans for critical operations
+   - Ensure trace context propagation
+   - Add relevant attributes to spans
+
+7. CODE QUALITY:
+   - Remove dead/commented code
+   - Extract magic numbers to named constants
+   - Simplify nested if-else conditions
+   - Use meaningful variable names
+   - Add JavaDoc for complex methods
+
+8. PERFORMANCE:
+   - Optimize async operations
+   - Reduce unnecessary object creation
+   - Check for potential memory leaks
+
+CONSTRAINTS:
+- DO NOT change business logic
+- DO NOT modify method signatures unless absolutely necessary
+- Maintain backward compatibility
+- Keep the same code structure/flow
+
+[PASTE YOUR CODE HERE]
