@@ -23,6 +23,7 @@ OPTIMIZATION REQUIREMENTS:
    - Log entry/exit of critical methods with context
    - Remove any PII or sensitive data from logs
    - Add error stack traces where needed
+   - Enhanve message of existing logs
 
 3. VERT.X PATTERNS:
    - Ensure no blocking calls on event loop
