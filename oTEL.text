@@ -1,0 +1,262 @@
+# Phase 1: OpenTelemetry Foundation
+
+Let me explain the core concepts in a way you can directly use for your Confluence documentation.
+
+---
+
+## 1.1 What is OpenTelemetry?
+
+OpenTelemetry (OTel) is an **open-source observability framework** that provides a standardized way to collect and export telemetry data (traces, metrics, and logs) from your applications.
+
+**Think of it this way:**
+- Your current ELK setup captures **what happened** (logs)
+- OpenTelemetry captures **what happened + how it's connected + how it's performing** (logs + traces + metrics)
+
+### The Three Pillars of Observability
+
+| Pillar | What It Captures | Your Use Case Example |
+|--------|------------------|----------------------|
+| **Traces** | The journey of a request across services | A Kafka message flowing from DB2 → your app → PostgreSQL → consumer |
+| **Metrics** | Numerical measurements over time | Messages processed per minute, DB insert latency, error counts by market |
+| **Logs** | Discrete events with context | Existing ELF logs, but now enriched with trace context |
+
+### Visual: How They Connect
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     SINGLE KAFKA MESSAGE FLOW                   │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  TRACE (The Journey - connected by Trace ID)                    │
+│  ═══════════════════════════════════════════                    │
+│  [Span 1: Kafka Consume] → [Span 2: Validate] → [Span 3: DB Insert] → [Span 4: Kafka Publish]
+│       12ms                     45ms                 120ms              8ms
+│                                                                 │
+│  METRICS (The Numbers)                                          │
+│  ════════════════════                                           │
+│  • kafka_messages_received_total: 2,847,293                     │
+│  • db_insert_duration_ms: p50=89ms, p99=340ms                   │
+│  • messages_by_market: {US: 1.2M, EU: 800K, APAC: 847K}         │
+│                                                                 │
+│  LOGS (The Events - now with Trace ID attached)                 │
+│  ══════════════════════════════════════════════                 │
+│  INFO [trace_id=abc123] Received message for market=US          │
+│  INFO [trace_id=abc123] Validation passed                       │
+│  INFO [trace_id=abc123] Inserted to PostgreSQL, rows=1          │
+│  INFO [trace_id=abc123] Published to consumer topic             │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 1.2 Why OpenTelemetry for Your Project?
+
+### Current Pain Points (ELK Only)
+
+| Problem | With ELK Only | With OTel + ELK |
+|---------|---------------|-----------------|
+| **Finding slow messages** | Search logs, manually correlate timestamps | Click on slow trace, see exact bottleneck |
+| **End-to-end visibility** | Grep by correlation ID across millions of logs | Single trace shows complete flow |
+| **"How many messages by market?"** | Write complex Elasticsearch queries | Pre-aggregated metric, instant dashboard |
+| **"Why did this message fail?"** | Search logs, hope correlation ID exists | Trace shows exact span where failure occurred |
+| **Performance at 10M/hour** | Storing 10M+ log lines, slow queries | Sample traces (store 1%), aggregate metrics (tiny storage) |
+
+### The Key Insight for Your Scale
+
+At **10+ million records/hour**, you cannot store detailed information for every message. Here's the strategy:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              STRATEGY FOR HIGH-VOLUME PROCESSING                │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  METRICS (100% of messages)                                     │
+│  ──────────────────────────                                     │
+│  • Count every message                                          │
+│  • Track latencies (histograms)                                 │
+│  • Group by market, status, error type                          │
+│  • Storage: ~KB per minute (aggregated)                         │
+│                                                                 │
+│  TRACES (1-5% of messages via sampling)                         │
+│  ─────────────────────────────────────                          │
+│  • Sample normal messages (1%)                                  │
+│  • Keep 100% of errors/slow messages                            │
+│  • Storage: Manageable even at scale                            │
+│                                                                 │
+│  LOGS (As needed, enriched with trace IDs)                      │
+│  ─────────────────────────────────────────                       │
+│  • Continue using ELF/ELK                                       │
+│  • Add trace_id and span_id to log context                      │
+│  • Click trace → jump to related logs                           │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 1.3 OpenTelemetry Architecture
+
+### Components Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    YOUR APPLICATION (Vert.x)                    │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│   ┌─────────────────────────────────────────────────────────┐   │
+│   │              OTel Java SDK (in your app)                │   │
+│   ├─────────────────────────────────────────────────────────┤   │
+│   │  • Auto-instrumentation (Kafka, JDBC, Vert.x)           │   │
+│   │  • Manual instrumentation (your business logic)         │   │
+│   │  • Context propagation (trace ID flows with message)    │   │
+│   └─────────────────────────────────────────────────────────┘   │
+│                              │                                  │
+│                              ▼                                  │
+│   ┌─────────────────────────────────────────────────────────┐   │
+│   │                   OTel Exporter                         │   │
+│   │        (sends data out of your application)             │   │
+│   └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    OTel COLLECTOR (Optional)                    │
+├─────────────────────────────────────────────────────────────────┤
+│  • Receives telemetry from multiple app instances               │
+│  • Processes (sampling, filtering, enriching)                   │
+│  • Exports to multiple backends                                 │
+│                                                                 │
+│  Receivers → Processors → Exporters                             │
+│     │            │            │                                 │
+│   OTLP      Sampling      To ELK (logs)                         │
+│             Batching      To Jaeger/Tempo (traces)              │
+│             Filtering     To Prometheus (metrics)               │
+└─────────────────────────────────────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                         BACKENDS                                │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
+│  │     ELK      │  │Jaeger/Tempo  │  │  Prometheus  │          │
+│  │   (Logs)     │  │  (Traces)    │  │  (Metrics)   │          │
+│  │  [Existing]  │  │   [New]      │  │   [New]      │          │
+│  └──────────────┘  └──────────────┘  └──────────────┘          │
+│         │                 │                 │                   │
+│         └─────────────────┴─────────────────┘                   │
+│                           │                                     │
+│                           ▼                                     │
+│                    ┌──────────────┐                             │
+│                    │   Grafana    │                             │
+│                    │ (Dashboards) │                             │
+│                    └──────────────┘                             │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Key Terms Glossary
+
+| Term | Definition | Your Context |
+|------|------------|--------------|
+| **Trace** | A complete journey of a request | One Kafka message's entire lifecycle |
+| **Span** | A single operation within a trace | "Kafka consume", "DB insert", "Validation" |
+| **Trace ID** | Unique identifier for entire trace | Links all operations for one message |
+| **Span ID** | Unique identifier for single operation | Identifies specific step |
+| **Context Propagation** | Passing trace info between services | Your correlation ID, but standardized |
+| **Instrumentation** | Code that creates spans/metrics | Auto (libraries) or Manual (your code) |
+| **Exporter** | Sends data to backend | OTLP, Jaeger, Prometheus formats |
+| **Collector** | Central processing hub | Receives, processes, routes telemetry |
+| **Sampling** | Deciding which traces to keep | Critical for your 10M/hour volume |
+
+---
+
+## 1.4 How OTel Fits With Your Existing ELK
+
+Since your team will continue using ELK, here's the integration approach:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    INTEGRATION STRATEGY                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Your Vert.x Application                                        │
+│  ────────────────────────                                       │
+│       │                                                         │
+│       ├──→ ELF Logger ──→ ELK (Logs with trace_id, span_id)     │
+│       │         ↑                                               │
+│       │    MDC injection                                        │
+│       │    (OTel adds trace context)                            │
+│       │                                                         │
+│       └──→ OTel SDK ──→ OTel Collector                          │
+│                              │                                  │
+│                              ├──→ Jaeger/Tempo (Traces)         │
+│                              └──→ Prometheus (Metrics)          │
+│                                                                 │
+│  Result:                                                        │
+│  • Logs in ELK now have trace_id                                │
+│  • Can search ELK: trace_id="abc123"                            │
+│  • Can click trace in Jaeger → link to ELK logs                 │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### What Changes in Your Logs
+
+**Before OTel:**
+```
+2024-01-15 10:23:45 INFO  ProcessingService - Received message correlation_id=xyz789 market=US
+2024-01-15 10:23:45 INFO  ValidationService - Validation passed correlation_id=xyz789
+2024-01-15 10:23:46 INFO  DatabaseService - Inserted to PostgreSQL correlation_id=xyz789
+```
+
+**After OTel:**
+```
+2024-01-15 10:23:45 INFO  ProcessingService - Received message correlation_id=xyz789 market=US trace_id=abc123def456 span_id=span001
+2024-01-15 10:23:45 INFO  ValidationService - Validation passed correlation_id=xyz789 trace_id=abc123def456 span_id=span002
+2024-01-15 10:23:46 INFO  DatabaseService - Inserted to PostgreSQL correlation_id=xyz789 trace_id=abc123def456 span_id=span003
+```
+
+---
+
+## 1.5 Your Dashboard Requirements Mapped to OTel
+
+| Your Requirement | OTel Pillar | Implementation Approach |
+|-----------------|-------------|------------------------|
+| Messages received count | **Metric** | Counter: `kafka_messages_received_total` |
+| Messages inserted to DB | **Metric** | Counter: `db_inserts_total` |
+| Messages published to consumers | **Metric** | Counter: `kafka_messages_published_total` |
+| Breakdown by market | **Metric** | Label/attribute: `market=US\|EU\|APAC` |
+| E2E flow by correlation ID | **Trace** | Trace with correlation_id as attribute |
+| Database operation dashboard | **Metric + Trace** | `db_operation_duration_ms` histogram + DB spans |
+| Error tracking | **Trace + Log** | Error spans link to ELK logs |
+
+---
+
+## Phase 1 Summary
+
+| Concept | Key Takeaway |
+|---------|--------------|
+| **Three Pillars** | Traces (journey), Metrics (numbers), Logs (events) |
+| **Why OTel** | Connected visibility + efficient storage at scale |
+| **Architecture** | SDK → Collector → Backends (ELK + new tools) |
+| **Your Strategy** | 100% metrics, sampled traces, logs enriched with trace IDs |
+| **ELK Integration** | Keep ELK, add trace_id to logs via MDC |
+
+---
+
+## Next Steps
+
+**Phase 2** will cover designing traces and metrics specifically for your flow:
+
+- Defining spans for: Kafka consume → Validate → DB insert → Kafka publish
+- Designing metrics for your dashboards
+- Planning how to handle your correlation ID alongside trace ID
+
+---
+
+**Questions before we proceed to Phase 2?**
+
+Or if this is clear, just say **"Phase 2"** and I'll continue with the design specific to your Kafka/PostgreSQL/DB2 flow.
